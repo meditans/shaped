@@ -3,6 +3,8 @@
 {-# LANGUAGE StandaloneDeriving, TypeFamilies, TypeOperators               #-}
 {-# LANGUAGE UndecidableInstances                                          #-}
 
+{-# LANGUAGE ScopedTypeVariables #-}
+
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
@@ -32,6 +34,10 @@ instance Generic (UserF f)
 instance (Show1 f) => Show (UserF f) where
   showsPrec d (UserF x) = showsUnaryWith showsPrec1 "UserF" d x
 
+instance Shaped User UserF where
+  toShape   (User m) = UserF (Identity m)
+  fromShape (UserF (Identity m)) = User m
+
 exUser = User "carlo@gmai.co"
 exUserF, exUserF' :: UserF Identity
 exUserF = UserF "Carlo"
@@ -51,13 +57,22 @@ instance Generic (User2F f)
 instance (Show1 f) => Show (User2F f) where
   showsPrec d (User2F x y) = showsBinaryWith showsPrec1 showsPrec1 "User2F" d x y
 
-exUser2 = User2 "carlo@gmai.co" 45
+-- TODO add a general Show instance for this kind of visualization!
+
+instance Shaped User2 User2F where
+  toShape   (User2 n a) = User2F (Identity n) (Identity a)
+  fromShape (User2F (Identity n) (Identity a)) = User2 n a
+
+exUser2 = User2 "Carlo" 45
 exUser2F, exUser2F' :: User2F Identity
 exUser2F = User2F "Carlo" 26
-exUser2F' = User2F "no" 45
+exUser2F' = User2F "Carlo" 45
 
 exValidationAge :: ValidationF Int
 exValidationAge = ValidationF $ Compose (\a -> if a == 26 then Just a else Nothing)
+
+exValidation2 :: User2F ValidationF
+exValidation2 = User2F exValidationF exValidationAge
 
 --------------------------------------------------------------------------------
 -- Various declinations of the validation functor
@@ -82,11 +97,36 @@ gvalidate2 :: User2F Identity -> User2F Maybe
 gvalidate2 uI = to . toSOPI $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) (simpleValidation2 exValidationF exValidationAge ) idTrans
   where
     idTrans :: SOP Identity '[ '[Text, Int] ]
-    idTrans = fromSOPI $ from uI
+    idTrans = fromSOPI (from uI)
 
--- -- Only as a guide
--- trueValTrans :: POP ValidationF '[ '[Text] ]
--- trueValTrans = fromPOPI $ POP $ (I exValidationF :* Nil) :* Nil
+gvalidate2' :: User2F Identity -> User2F ValidationF -> User2F Maybe
+gvalidate2' u v = to . toSOPI
+  $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) vPOP uSOP
+  where
+    uSOP :: SOP Identity '[ '[Text, Int] ]
+    uSOP = fromSOPI (from u)
+    vPOP :: POP ValidationF '[ '[Text, Int] ]
+    vPOP = singleSOPtoPOP . fromSOPI $ from exValidation2
+
+gvalidateGen
+  :: forall a s c c1 .
+     ( Shaped a s, c ~ Code a, c ~ '[c1]
+     , SListI2 c
+     , Code (s Identity) ~ Map2 Identity c
+     , Code (s Maybe) ~ Map2 Maybe c
+     , Code (s ValidationF) ~ Map2 ValidationF c
+     , Map2 ValidationF c ~ Code (s ValidationF)
+     , Generic (s Maybe)
+     , Generic (s Identity)
+     , Generic (s ValidationF))
+  => a -> s ValidationF -> s Maybe
+gvalidateGen u v = to . toSOPI
+  $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) vPOP uSOP
+  where
+    uSOP :: SOP Identity c
+    uSOP =  fromSOPI . from $ toShape u
+    vPOP :: POP ValidationF c
+    vPOP = singleSOPtoPOP . fromSOPI $ from v
 
 simpleValidation :: ValidationF Text -> POP ValidationF '[ '[Text] ]
 simpleValidation f = fromPOPI $ POP $ (I f :* Nil) :* Nil
@@ -94,6 +134,8 @@ simpleValidation f = fromPOPI $ POP $ (I f :* Nil) :* Nil
 simpleValidation2 :: ValidationF Text -> ValidationF Int -> POP ValidationF '[ '[Text, Int] ]
 simpleValidation2 f g = fromPOPI $ POP $ (I f :* I g :* Nil) :* Nil
 
+singleSOPtoPOP :: SOP f (xs ': '[]) -> POP f (xs ': '[])
+singleSOPtoPOP (SOP (Z x))= POP (x :* Nil)
 
 type NiceValidation xss = POP ValidationF xss
 

@@ -7,6 +7,7 @@ module Shaped where
 import Data.Text
 import GHC.Generics
 import Generics.SOP hiding (Compose)
+import Control.Monad.Identity
 
 -- The Shape type family is no longer used, in favour of simple (* -> *)
 -- parametrization The problem with type families was that I have to completely
@@ -34,6 +35,18 @@ import Generics.SOP hiding (Compose)
 --   where
 --     validateUser' :: UserShaped Literal -> UserShaped Validation -> UserShaped Error
 --     validate' (s m) (s f) = UserShaped (f m)
+
+--------------------------------------------------------------------------------
+-- New shaped class
+--------------------------------------------------------------------------------
+
+class Shaped (a :: *) (b :: (* -> *) -> *) | a -> b, b -> a where
+  toShape   :: a -> b Identity
+  fromShape :: b Identity -> a
+
+--------------------------------------------------------------------------------
+-- SOP machinery
+--------------------------------------------------------------------------------
 
 type family Map (f :: * -> *) (xs :: [*]) :: [*] where
   Map f '[]       = '[]
