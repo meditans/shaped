@@ -17,54 +17,35 @@ import Data.Functor.Compose
 import Data.Functor.Classes
 import Control.Monad.Identity
 
+--------------------------------------------------------------------------------
+--
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- User with only one field, for the tutorial
+--------------------------------------------------------------------------------
+
 data User = User { userMail :: Text } deriving (Show, Read, Eq, Ord, GHC.Generic)
-
 data UserF f = UserF { userMailF :: f Text } deriving (GHC.Generic)
-
+instance Generic User
+instance Generic (UserF f)
 instance (Show1 f) => Show (UserF f) where
   showsPrec d (UserF x) = showsUnaryWith showsPrec1 "UserF" d x
 
-instance Generic User
-instance Generic (UserF f)
-
 exUser = User "carlo@gmai.co"
-
-exUserF :: UserF Identity
+exUserF, exUserF' :: UserF Identity
 exUserF = UserF "Carlo"
+exUserF' = UserF "no"
 
--- Non vorrei definire questo
-data UserShaped i = UserShaped
-  { userShapedMail :: Field i Text }  deriving (GHC.Generic)
+--------------------------------------------------------------------------------
+-- Various declinations of the validation functor
+--------------------------------------------------------------------------------
 
-instance Generic (UserShaped Error)
-instance Generic (UserShaped Validation)
+newtype ValidationF a = ValidationF { unValidationF :: Compose ((->) a) Maybe a } deriving (GHC.Generic)
+instance Generic (ValidationF a)
 
-exUserError :: UserShaped Error
-exUserError = UserShaped (Just "hey")
-
-exUserErrorF :: UserF Maybe
-exUserErrorF = UserF (Just "hey")
-
-exUserErrorSOPF :: SOP Maybe '[ '[Text] ]
-exUserErrorSOPF = fromSOPI $ from exUserError
-
-exUserErrorFSOPF :: SOP Maybe '[ '[Text] ]
-exUserErrorFSOPF = fromSOPI $ from exUserErrorF
-
-exUserValid :: UserShaped Validation
-exUserValid = UserShaped (\t -> Just t)
-
-exUserValidF :: UserF ValidationF
-exUserValidF = UserF $ ValidationF $ Compose (\t -> Just t)
-
-exUserValidFSOPF :: SOP ValidationF '[ '[Text] ]
-exUserValidFSOPF = fromSOPI $ from exUserValidF
-
--- hpure :: SListIN h xs => (forall a. f a) -> h f xs
--- hap, ap_SOP :: POP (f -.-> g) xss -> SOP f xss -> SOP g xss
-
--- exUserValidSOPF :: SOP (Field Validation) '[ '[Text] ]
--- exUserValidSOPF = fromSOPI $ from exUserValid
+exValidationF :: ValidationF Text
+exValidationF = ValidationF $ Compose (\a -> if a == "Carlo" then Just a else Nothing)
 
 liftedValFun :: (ValidationF -.-> Identity -.-> Maybe) a
 liftedValFun = fn_2 (\(ValidationF (Compose f)) (Identity a) -> f a)
@@ -73,106 +54,74 @@ liftedValFunPOP :: (SListI a, SListI2 a) => POP (ValidationF -.-> Identity -.-> 
 liftedValFunPOP = hpure liftedValFun
 
 gvalidate :: UserF Identity -> UserF Maybe
-gvalidate uI = to . toSOPI $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) trueValTrans idTrans
+gvalidate uI = to . toSOPI $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) (simpleValidation exValidationF) idTrans
   where
     idTrans :: SOP Identity '[ '[Text] ]
     idTrans = fromSOPI $ from uI
 
-trueValTrans :: POP ValidationF '[ '[Text] ]
-trueValTrans = fromPOPI $ POP $ (I exValidationF :* Nil) :* Nil
+-- -- Only as a guide
+-- trueValTrans :: POP ValidationF '[ '[Text] ]
+-- trueValTrans = fromPOPI $ POP $ (I exValidationF :* Nil) :* Nil
 
-newtype ValidationF a = ValidationF { unValidationF :: Compose ((->) a) Maybe a } deriving (GHC.Generic)
-instance Generic (ValidationF a)
+simpleValidation :: ValidationF Text -> POP ValidationF '[ '[Text] ]
+simpleValidation f = fromPOPI $ POP $ (I f :* Nil) :* Nil
 
-exValidationF :: ValidationF Text
-exValidationF = ValidationF $ Compose (\a -> Just a)
+type NiceValidation xss = POP ValidationF xss
 
--- Non vorrei definire questo
-deriving instance Eq   (Field i Text) => Eq   (UserShaped i)
-deriving instance Show (Field i Text) => Show (UserShaped i)
+{-
+the point would be constructing validations serving one validation function for each field, if they are there
+So for a datatype A Int | B String we should give something like
 
--- Non vorrei definire questo
-instance Shaped User (UserShaped Literal) where
-  toShape   (User m) = UserShaped m
-  fromShape (UserShaped m) = User m
+validationForInt ::: validationForString
 
-instance Shaped' User UserShaped where
-  toShape' (User m) = UserShaped m
-  fromShape' (UserShaped m) = User m
+Eventually I want to construct a POP ValidationF xss from this validation. I
+also can retrieve the [[]] from the original type.
 
--- Questo dovrebbe avere una versione generale
-validateUserWith :: User -> UserShaped Validation -> UserShaped Error
-validateUserWith u uv = validateUser' (toShape u) uv
-  where
-    validateUser' :: UserShaped Literal -> UserShaped Validation -> UserShaped Error
-    validateUser' (UserShaped m) (UserShaped f) = UserShaped (f m)
+For example, `:kind! Code User` is '['[Text]]
+
+so I want only a ValidationAddend '[Text]
+
+if the code were '[ '[Text], '[String] ]
+I would want a `ValidationAddend '[ Text ]` and a `ValidationAddend '[ String ]`
+
+How would I to specify this function?
+-}
 
 --------------------------------------------------------------------------------
 
-type family Map (f :: * -> *) (xs :: [*]) :: [*] where
-  Map f '[]       = '[]
-  Map f (x ': xs) = f x ': Map f xs
+--------------------------------------------------------------------------------
+-- Old UserShaped stuff, to inform the general vision
+--------------------------------------------------------------------------------
 
-type family Map2 (f :: * -> *) (xs :: [[*]]) :: [[*]] where
-  Map2 f '[]       = '[]
-  Map2 f (x ': xs) = Map f x ': Map2 f xs
+-- -- Non vorrei definire questo
+-- deriving instance Eq   (Field i Text) => Eq   (UserShaped i)
+-- deriving instance Show (Field i Text) => Show (UserShaped i)
 
-fromSOPI :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
-         => SOP I (Map2 f zss) -> SOP f zss
-fromSOPI (SOP x) = SOP (fromNSI x)
+-- -- Non vorrei definire questo
+-- instance Shaped User (UserShaped Literal) where
+--   toShape   (User m) = UserShaped m
+--   fromShape (UserShaped m) = User m
 
-fromPOPI :: (SListI zss, SListI2 zss) => POP I (Map2 f zss) -> POP f zss
-fromPOPI (POP x) = POP (fromNPI2 x)
+-- instance Shaped' User UserShaped where
+--   toShape' (User m) = UserShaped m
+--   fromShape' (UserShaped m) = User m
 
-fromNSI :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
-        => NS (NP I) (Map2 f zss) -> NS (NP f) zss
-fromNSI = go shape
-  where
-    go :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
-       => Generics.SOP.Shape zss -> NS (NP I) (Map2 f zss) -> NS (NP f) zss
-    go (ShapeCons ShapeNil)      (Z x)  = Z (fromNPI x)
-    go (ShapeCons (ShapeCons _)) (S ns) = S (fromNSI ns)
+-- -- Questo dovrebbe avere una versione generale
+-- validateUserWith :: User -> UserShaped Validation -> UserShaped Error
+-- validateUserWith u uv = validateUser' (toShape u) uv
+--   where
+--     validateUser' :: UserShaped Literal -> UserShaped Validation -> UserShaped Error
+--     validateUser' (UserShaped m) (UserShaped f) = UserShaped (f m)
 
-fromNPI2 :: (SListI zss, SListI2 zss) => NP (NP I) (Map2 f zss) -> NP (NP f) zss
-fromNPI2 = go shape
-  where
-    go :: (SListI zss, SListI2 zss)
-       => Generics.SOP.Shape zss -> NP (NP I) (Map2 f zss) -> NP (NP f) zss
-    go (ShapeNil)    (Nil)  = Nil
-    go (ShapeCons _) (np :* nps) = fromNPI np :* fromNPI2 nps
+-- -- Non vorrei definire questo
+-- data UserShaped i = UserShaped
+--   { userShapedMail :: Field i Text }  deriving (GHC.Generic)
 
-fromNPI :: SListI xs => NP I (Map f xs) -> NP f xs
-fromNPI = go sList
-  where
-    go :: SList ys -> NP I (Map f ys) -> NP f ys
-    go SNil Nil = Nil
-    go SCons (I x :* xs) = x :* go sList xs
+-- instance Generic (UserShaped Error)
+-- instance Generic (UserShaped Validation)
 
-toSOPI :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
-       => SOP f zss -> SOP I (Map2 f zss)
-toSOPI (SOP x) = SOP (toNSI x)
+-- exUserError :: UserShaped Error
+-- exUserError = UserShaped (Just "hey")
 
-toPOPI :: (SListI zss, SListI2 zss)
-       => POP f zss -> POP I (Map2 f zss)
-toPOPI (POP x) = POP (toNPI2 x)
-
-toNSI :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
-        => NS (NP f) zss -> NS (NP I) (Map2 f zss)
-toNSI = go shape
-  where
-    go :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
-       => Generics.SOP.Shape zss -> NS (NP f) zss -> NS (NP I) (Map2 f zss)
-    go (ShapeCons ShapeNil)      (Z x)  = Z (toNPI x)
-    go (ShapeCons (ShapeCons _)) (S ns) = S (toNSI ns)
-
-toNPI2 :: (SListI zss, SListI2 zss) => NP (NP f) zss -> NP (NP I) (Map2 f zss)
-toNPI2 = go shape
-  where
-    go :: (SListI zss, SListI2 zss)
-       => Generics.SOP.Shape zss -> NP (NP f) zss -> NP (NP I) (Map2 f zss)
-    go (ShapeNil)      Nil  = Nil
-    go (ShapeCons _) (np :* nps) = toNPI np :* toNPI2 nps
-
-toNPI :: NP f xs -> NP I (Map f xs)
-toNPI Nil = Nil
-toNPI (fx :* np) = I fx :* toNPI np
+-- exUserValid :: UserShaped Validation
+-- exUserValid = UserShaped (\t -> Just t)
