@@ -1,20 +1,16 @@
-{-# LANGUAGE DataKinds, DeriveGeneric, FlexibleContexts, FlexibleInstances #-}
-{-# LANGUAGE GADTs, MultiParamTypeClasses, OverloadedStrings, RankNTypes   #-}
-{-# LANGUAGE StandaloneDeriving, TypeFamilies, TypeOperators               #-}
-{-# LANGUAGE UndecidableInstances                                          #-}
-
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveGeneric, MultiParamTypeClasses, OverloadedStrings #-}
 
 module Shaped.Tutorial where
 
 import Data.Text
-import Generics.SOP hiding (Compose)
-import qualified GHC.Generics as GHC
 import Shaped
 
-import Data.Functor.Compose
-import Data.Functor.Classes
 import Control.Monad.Identity
+import Data.Functor.Classes
+import Data.Functor.Compose
+
+import           Generics.SOP hiding (Compose)
+import qualified GHC.Generics as GHC
 
 --------------------------------------------------------------------------------
 -- User with only one field, for the tutorial
