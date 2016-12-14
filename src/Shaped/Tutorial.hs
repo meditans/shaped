@@ -112,6 +112,9 @@ fromSOPI :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
          => SOP I (Map2 f zss) -> SOP f zss
 fromSOPI (SOP x) = SOP (fromNSI x)
 
+fromPOPI :: (SListI zss, SListI2 zss) => POP I (Map2 f zss) -> POP f zss
+fromPOPI (POP x) = POP (fromNPI2 x)
+
 fromNSI :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
         => NS (NP I) (Map2 f zss) -> NS (NP f) zss
 fromNSI = go shape
@@ -121,6 +124,14 @@ fromNSI = go shape
     go (ShapeCons ShapeNil)      (Z x)  = Z (fromNPI x)
     go (ShapeCons (ShapeCons _)) (S ns) = S (fromNSI ns)
 
+fromNPI2 :: (SListI zss, SListI2 zss) => NP (NP I) (Map2 f zss) -> NP (NP f) zss
+fromNPI2 = go shape
+  where
+    go :: (SListI zss, SListI2 zss)
+       => Generics.SOP.Shape zss -> NP (NP I) (Map2 f zss) -> NP (NP f) zss
+    go (ShapeNil)    (Nil)  = Nil
+    go (ShapeCons _) (np :* nps) = fromNPI np :* fromNPI2 nps
+
 fromNPI :: SListI xs => NP I (Map f xs) -> NP f xs
 fromNPI = go sList
   where
@@ -129,8 +140,12 @@ fromNPI = go sList
     go SCons (I x :* xs) = x :* go sList xs
 
 toSOPI :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
-         => SOP f zss -> SOP I (Map2 f zss)
+       => SOP f zss -> SOP I (Map2 f zss)
 toSOPI (SOP x) = SOP (toNSI x)
+
+toPOPI :: (SListI zss, SListI2 zss)
+       => POP f zss -> POP I (Map2 f zss)
+toPOPI (POP x) = POP (toNPI2 x)
 
 toNSI :: (zss ~ (xs ': xss), SListI zss, SListI2 zss)
         => NS (NP f) zss -> NS (NP I) (Map2 f zss)
@@ -140,6 +155,14 @@ toNSI = go shape
        => Generics.SOP.Shape zss -> NS (NP f) zss -> NS (NP I) (Map2 f zss)
     go (ShapeCons ShapeNil)      (Z x)  = Z (toNPI x)
     go (ShapeCons (ShapeCons _)) (S ns) = S (toNSI ns)
+
+toNPI2 :: (SListI zss, SListI2 zss) => NP (NP f) zss -> NP (NP I) (Map2 f zss)
+toNPI2 = go shape
+  where
+    go :: (SListI zss, SListI2 zss)
+       => Generics.SOP.Shape zss -> NP (NP f) zss -> NP (NP I) (Map2 f zss)
+    go (ShapeNil)      Nil  = Nil
+    go (ShapeCons _) (np :* nps) = toNPI np :* toNPI2 nps
 
 toNPI :: NP f xs -> NP I (Map f xs)
 toNPI Nil = Nil
