@@ -14,16 +14,23 @@ import qualified GHC.Generics as GHC
 import Shaped
 
 import Data.Functor.Compose
+import Data.Functor.Classes
 import Control.Monad.Identity
 
 data User = User { userMail :: Text } deriving (Show, Read, Eq, Ord, GHC.Generic)
 
 data UserF f = UserF { userMailF :: f Text } deriving (GHC.Generic)
 
+instance (Show1 f) => Show (UserF f) where
+  showsPrec d (UserF x) = showsUnaryWith showsPrec1 "UserF" d x
+
 instance Generic User
 instance Generic (UserF f)
 
 exUser = User "carlo@gmai.co"
+
+exUserF :: UserF Identity
+exUserF = UserF "Carlo"
 
 -- Non vorrei definire questo
 data UserShaped i = UserShaped
@@ -65,18 +72,20 @@ liftedValFun = fn_2 (\(ValidationF (Compose f)) (Identity a) -> f a)
 liftedValFunPOP :: (SListI a, SListI2 a) => POP (ValidationF -.-> Identity -.-> Maybe) a
 liftedValFunPOP = hpure liftedValFun
 
-gvalidate :: UserF Identity -> UserF ValidationF -> _ -- UserF Maybe
-gvalidate uI uV = hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) trueValTrans idTrans
+gvalidate :: UserF Identity -> UserF Maybe
+gvalidate uI = to . toSOPI $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) trueValTrans idTrans
   where
     idTrans :: SOP Identity '[ '[Text] ]
-    idTrans= fromSOPI $ from uI
-    valTrans :: SOP ValidationF '[ '[Text] ]
-    valTrans= fromSOPI $ from uV
-    trueValTrans :: POP ValidationF '[ '[Text] ]
-    trueValTrans = undefined
+    idTrans = fromSOPI $ from uI
+
+trueValTrans :: POP ValidationF '[ '[Text] ]
+trueValTrans = fromPOPI $ POP $ (I exValidationF :* Nil) :* Nil
 
 newtype ValidationF a = ValidationF { unValidationF :: Compose ((->) a) Maybe a } deriving (GHC.Generic)
 instance Generic (ValidationF a)
+
+exValidationF :: ValidationF Text
+exValidationF = ValidationF $ Compose (\a -> Just a)
 
 -- Non vorrei definire questo
 deriving instance Eq   (Field i Text) => Eq   (UserShaped i)
