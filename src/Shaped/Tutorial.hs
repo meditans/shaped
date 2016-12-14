@@ -76,13 +76,29 @@ exValidation2 = UserShape2
 -- Compact example for 3 fields, to note all the things needed
 --------------------------------------------------------------------------------
 
+-- I'd like the user of this library to be able to continue using his normal
+-- datatypes, e.g.:
 data User3 = User3 { userName3 :: Text, userAge3 :: Int, userDouble3 :: Double }
   deriving (Show, Read, Eq, Ord, GHC.Generic)
 
+instance Generic User3
+
+exUser3 = User3 "Carlo" 26 (-0.345)
+
+exValidation3 :: UserShape3 Validation
+exValidation3 = UserShape3
+  (Validation . Compose $ \t -> if t == "Carlo" then Just t else Nothing)
+  (Validation . Compose $ \a -> if a < 100      then Just a else Nothing)
+  (Validation . Compose $ \d -> if d > 0        then Just d else Nothing)
+
+-- And be able to call the generic validation function in this way:
+exError :: UserShape3 Maybe
+exError = validateRecord exUser3 exValidation3
+
+-- There is still a bit of boilerplate, to be automatically generated:
+
 data UserShape3 f = UserShape3 (f Text) (f Int) (f Double)
   deriving (GHC.Generic)
-
-instance Generic User3
 instance Generic (UserShape3 f)
 
 instance Shaped User3 UserShape3 where
@@ -95,14 +111,3 @@ instance (Show1 f) => Show (UserShape3 f) where
     . showChar ' ' . showsPrec1 11 x
     . showChar ' ' . showsPrec1 11 y
     . showChar ' ' . showsPrec1 11 z
-
-exUser3 = User3 "Carlo" 26 (-0.345)
-
-exValidation3 :: UserShape3 Validation
-exValidation3 = UserShape3
-  (Validation . Compose $ \t -> if t == "Carlo" then Just t else Nothing)
-  (Validation . Compose $ \a -> if a < 100      then Just a else Nothing)
-  (Validation . Compose $ \d -> if d > 0        then Just d else Nothing)
-
-exError :: UserShape3 Maybe
-exError = validateRecord exUser3 exValidation3
