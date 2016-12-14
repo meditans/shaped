@@ -37,15 +37,34 @@ exUserF, exUserF' :: UserF Identity
 exUserF = UserF "Carlo"
 exUserF' = UserF "no"
 
+exValidationF :: ValidationF Text
+exValidationF = ValidationF $ Compose (\a -> if a == "Carlo" then Just a else Nothing)
+
+--------------------------------------------------------------------------------
+-- User with two fields, for the tutorial
+--------------------------------------------------------------------------------
+
+data User2 = User2 { userMail2 :: Text, userAge2 :: Int } deriving (Show, Read, Eq, Ord, GHC.Generic)
+data User2F f = User2F { userMail2F :: f Text, userAge2F :: f Int } deriving (GHC.Generic)
+instance Generic User2
+instance Generic (User2F f)
+instance (Show1 f) => Show (User2F f) where
+  showsPrec d (User2F x y) = showsBinaryWith showsPrec1 showsPrec1 "User2F" d x y
+
+exUser2 = User2 "carlo@gmai.co" 45
+exUser2F, exUser2F' :: User2F Identity
+exUser2F = User2F "Carlo" 26
+exUser2F' = User2F "no" 45
+
+exValidationAge :: ValidationF Int
+exValidationAge = ValidationF $ Compose (\a -> if a == 26 then Just a else Nothing)
+
 --------------------------------------------------------------------------------
 -- Various declinations of the validation functor
 --------------------------------------------------------------------------------
 
 newtype ValidationF a = ValidationF { unValidationF :: Compose ((->) a) Maybe a } deriving (GHC.Generic)
 instance Generic (ValidationF a)
-
-exValidationF :: ValidationF Text
-exValidationF = ValidationF $ Compose (\a -> if a == "Carlo" then Just a else Nothing)
 
 liftedValFun :: (ValidationF -.-> Identity -.-> Maybe) a
 liftedValFun = fn_2 (\(ValidationF (Compose f)) (Identity a) -> f a)
@@ -59,12 +78,22 @@ gvalidate uI = to . toSOPI $ hliftA2 (\(ValidationF (Compose f)) (Identity a) ->
     idTrans :: SOP Identity '[ '[Text] ]
     idTrans = fromSOPI $ from uI
 
+gvalidate2 :: User2F Identity -> User2F Maybe
+gvalidate2 uI = to . toSOPI $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) (simpleValidation2 exValidationF exValidationAge ) idTrans
+  where
+    idTrans :: SOP Identity '[ '[Text, Int] ]
+    idTrans = fromSOPI $ from uI
+
 -- -- Only as a guide
 -- trueValTrans :: POP ValidationF '[ '[Text] ]
 -- trueValTrans = fromPOPI $ POP $ (I exValidationF :* Nil) :* Nil
 
 simpleValidation :: ValidationF Text -> POP ValidationF '[ '[Text] ]
 simpleValidation f = fromPOPI $ POP $ (I f :* Nil) :* Nil
+
+simpleValidation2 :: ValidationF Text -> ValidationF Int -> POP ValidationF '[ '[Text, Int] ]
+simpleValidation2 f g = fromPOPI $ POP $ (I f :* I g :* Nil) :* Nil
+
 
 type NiceValidation xss = POP ValidationF xss
 
