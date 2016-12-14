@@ -20,10 +20,6 @@ import Data.Functor.Classes
 import Control.Monad.Identity
 
 --------------------------------------------------------------------------------
---
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
 -- User with only one field, for the tutorial
 --------------------------------------------------------------------------------
 
@@ -49,30 +45,56 @@ exValidationF = ValidationF $ Compose (\a -> if a == "Carlo" then Just a else No
 --------------------------------------------------------------------------------
 -- User with two fields, for the tutorial
 --------------------------------------------------------------------------------
-
 data User2 = User2 { userMail2 :: Text, userAge2 :: Int } deriving (Show, Read, Eq, Ord, GHC.Generic)
-data User2F f = User2F { userMail2F :: f Text, userAge2F :: f Int } deriving (GHC.Generic)
+
+data UserShape2 f = UserShape2 (f Text) (f Int) deriving (GHC.Generic)
+
 instance Generic User2
-instance Generic (User2F f)
-instance (Show1 f) => Show (User2F f) where
-  showsPrec d (User2F x y) = showsBinaryWith showsPrec1 showsPrec1 "User2F" d x y
+instance Generic (UserShape2 f)
+
+instance (Show1 f) => Show (UserShape2 f) where
+  showsPrec d (UserShape2 x y) = showsBinaryWith showsPrec1 showsPrec1 "UserShape2" d x y
 
 -- TODO add a general Show instance for this kind of visualization!
 
-instance Shaped User2 User2F where
-  toShape   (User2 n a) = User2F (Identity n) (Identity a)
-  fromShape (User2F (Identity n) (Identity a)) = User2 n a
+instance Shaped User2 UserShape2 where
+  toShape   (User2 n a) = UserShape2 (Identity n) (Identity a)
+  fromShape (UserShape2 (Identity n) (Identity a)) = User2 n a
 
 exUser2 = User2 "Carlo" 45
-exUser2F, exUser2F' :: User2F Identity
-exUser2F = User2F "Carlo" 26
-exUser2F' = User2F "Carlo" 45
 
 exValidationAge :: ValidationF Int
 exValidationAge = ValidationF $ Compose (\a -> if a == 26 then Just a else Nothing)
 
-exValidation2 :: User2F ValidationF
-exValidation2 = User2F exValidationF exValidationAge
+exValidation2 :: UserShape2 ValidationF
+exValidation2 = UserShape2 exValidationF exValidationAge
+
+--------------------------------------------------------------------------------
+-- Compact example for 3 fields, to note all the things needed
+--------------------------------------------------------------------------------
+
+data User3 = User3 { userName3 :: Text, userAge3 :: Int, userDouble3 :: Double }
+  deriving (Show, Read, Eq, Ord, GHC.Generic)
+data UserShape3 f = UserShape3 (f Text) (f Int) (f Double)
+  deriving (GHC.Generic)
+
+instance Generic User3
+instance Generic (UserShape3 f)
+
+instance Shaped User3 UserShape3 where
+  toShape   (User3 n a d) = UserShape3 (Identity n) (Identity a) (Identity d)
+  fromShape (UserShape3 (Identity n) (Identity a) (Identity d)) = User3 n a d
+
+exUser3 = User3 "Carlo" 26 0.345
+
+exValidation3 :: UserShape3 ValidationF
+exValidation3 = UserShape3
+  (ValidationF . Compose $ \t -> if t == "Carlo" then Just t else Nothing)
+  (ValidationF . Compose $ \a -> if a < 100      then Just a else Nothing)
+  (ValidationF . Compose $ \d -> if d > 0        then Just d else Nothing)
+
+exError :: UserShape3 Maybe
+exError = validateRecord exUser3 exValidation3
 
 --------------------------------------------------------------------------------
 -- Various declinations of the validation functor
@@ -81,46 +103,17 @@ exValidation2 = User2F exValidationF exValidationAge
 newtype ValidationF a = ValidationF { unValidationF :: Compose ((->) a) Maybe a } deriving (GHC.Generic)
 instance Generic (ValidationF a)
 
-liftedValFun :: (ValidationF -.-> Identity -.-> Maybe) a
-liftedValFun = fn_2 (\(ValidationF (Compose f)) (Identity a) -> f a)
-
-liftedValFunPOP :: (SListI a, SListI2 a) => POP (ValidationF -.-> Identity -.-> Maybe) a
-liftedValFunPOP = hpure liftedValFun
-
-gvalidate :: UserF Identity -> UserF Maybe
-gvalidate uI = to . toSOPI $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) (simpleValidation exValidationF) idTrans
-  where
-    idTrans :: SOP Identity '[ '[Text] ]
-    idTrans = fromSOPI $ from uI
-
-gvalidate2 :: User2F Identity -> User2F Maybe
-gvalidate2 uI = to . toSOPI $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) (simpleValidation2 exValidationF exValidationAge ) idTrans
-  where
-    idTrans :: SOP Identity '[ '[Text, Int] ]
-    idTrans = fromSOPI (from uI)
-
-gvalidate2' :: User2F Identity -> User2F ValidationF -> User2F Maybe
-gvalidate2' u v = to . toSOPI
-  $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) vPOP uSOP
-  where
-    uSOP :: SOP Identity '[ '[Text, Int] ]
-    uSOP = fromSOPI (from u)
-    vPOP :: POP ValidationF '[ '[Text, Int] ]
-    vPOP = singleSOPtoPOP . fromSOPI $ from exValidation2
-
-gvalidateGen
+validateRecord
   :: forall a s c c1 .
-     ( Shaped a s, c ~ Code a, c ~ '[c1]
-     , SListI2 c
-     , Code (s Identity) ~ Map2 Identity c
-     , Code (s Maybe) ~ Map2 Maybe c
+     ( Shaped a s, c ~ Code a, c ~ '[c1], SListI2 c
+     , Code (s Identity)    ~ Map2 Identity c
+     , Code (s Maybe)       ~ Map2 Maybe c
      , Code (s ValidationF) ~ Map2 ValidationF c
-     , Map2 ValidationF c ~ Code (s ValidationF)
      , Generic (s Maybe)
      , Generic (s Identity)
      , Generic (s ValidationF))
   => a -> s ValidationF -> s Maybe
-gvalidateGen u v = to . toSOPI
+validateRecord u v = to . toSOPI
   $ hliftA2 (\(ValidationF (Compose f)) (Identity a) -> f a) vPOP uSOP
   where
     uSOP :: SOP Identity c
@@ -128,16 +121,10 @@ gvalidateGen u v = to . toSOPI
     vPOP :: POP ValidationF c
     vPOP = singleSOPtoPOP . fromSOPI $ from v
 
-simpleValidation :: ValidationF Text -> POP ValidationF '[ '[Text] ]
-simpleValidation f = fromPOPI $ POP $ (I f :* Nil) :* Nil
-
-simpleValidation2 :: ValidationF Text -> ValidationF Int -> POP ValidationF '[ '[Text, Int] ]
-simpleValidation2 f g = fromPOPI $ POP $ (I f :* I g :* Nil) :* Nil
-
 singleSOPtoPOP :: SOP f (xs ': '[]) -> POP f (xs ': '[])
 singleSOPtoPOP (SOP (Z x))= POP (x :* Nil)
 
-type NiceValidation xss = POP ValidationF xss
+-- type NiceValidation xss = POP ValidationF xss
 
 {-
 the point would be constructing validations serving one validation function for each field, if they are there
@@ -157,42 +144,3 @@ I would want a `ValidationAddend '[ Text ]` and a `ValidationAddend '[ String ]`
 
 How would I to specify this function?
 -}
-
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
--- Old UserShaped stuff, to inform the general vision
---------------------------------------------------------------------------------
-
--- -- Non vorrei definire questo
--- deriving instance Eq   (Field i Text) => Eq   (UserShaped i)
--- deriving instance Show (Field i Text) => Show (UserShaped i)
-
--- -- Non vorrei definire questo
--- instance Shaped User (UserShaped Literal) where
---   toShape   (User m) = UserShaped m
---   fromShape (UserShaped m) = User m
-
--- instance Shaped' User UserShaped where
---   toShape' (User m) = UserShaped m
---   fromShape' (UserShaped m) = User m
-
--- -- Questo dovrebbe avere una versione generale
--- validateUserWith :: User -> UserShaped Validation -> UserShaped Error
--- validateUserWith u uv = validateUser' (toShape u) uv
---   where
---     validateUser' :: UserShaped Literal -> UserShaped Validation -> UserShaped Error
---     validateUser' (UserShaped m) (UserShaped f) = UserShaped (f m)
-
--- -- Non vorrei definire questo
--- data UserShaped i = UserShaped
---   { userShapedMail :: Field i Text }  deriving (GHC.Generic)
-
--- instance Generic (UserShaped Error)
--- instance Generic (UserShaped Validation)
-
--- exUserError :: UserShaped Error
--- exUserError = UserShaped (Just "hey")
-
--- exUserValid :: UserShaped Validation
--- exUserValid = UserShaped (\t -> Just t)
