@@ -24,6 +24,11 @@ newtype Validation a = Validation { unValidationF :: Compose ((->) a) Maybe a }
 
 instance Generic (Validation a)
 
+newtype ValidationGen f a = ValidationGen { unValidationGen :: Compose ((->) a) f a }
+                     deriving (GHC.Generic)
+
+instance Generic (ValidationGen f a)
+
 -- A general function to check records
 validateRecord
   :: forall a s c c1 .
@@ -41,6 +46,24 @@ validateRecord u v = to . toSOPI
     uSOP :: SOP Identity c
     uSOP =  fromSOPI . from $ toShape u
     vPOP :: POP Validation c
+    vPOP = singleSOPtoPOP . fromSOPI $ from v
+
+validateRecordGen
+  :: forall a f s c c1 .
+     ( Shaped a s, c ~ Code a, c ~ '[c1], SListI2 c
+     , Code (s Identity)          ~ Map2 Identity c
+     , Code (s f)                 ~ Map2 f c
+     , Code (s (ValidationGen f)) ~ Map2 (ValidationGen f) c
+     , Generic (s f)
+     , Generic (s Identity)
+     , Generic (s (ValidationGen f)))
+  => a -> s (ValidationGen f) -> s f
+validateRecordGen u v = to . toSOPI
+  $ hliftA2 (\(ValidationGen (Compose f)) (Identity a) -> f a) vPOP uSOP
+  where
+    uSOP :: SOP Identity c
+    uSOP =  fromSOPI . from $ toShape u
+    vPOP :: POP (ValidationGen f) c
     vPOP = singleSOPtoPOP . fromSOPI $ from v
 
 --------------------------------------------------------------------------------
