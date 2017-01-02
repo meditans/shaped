@@ -91,9 +91,18 @@ exValidation3 = UserShape3
   (Validation . Compose $ \a -> if a < 100      then Just a else Nothing)
   (Validation . Compose $ \d -> if d > 0        then Just d else Nothing)
 
+exValidationGen :: UserShape3 (ValidationGen (Either Text))
+exValidationGen = UserShape3
+  (ValidationGen . Compose $ \t -> if t == "Carlo" then Right t else Left "Incorrect name")
+  (ValidationGen . Compose $ \a -> if a < 100      then Right a else Left "No cyborgs here")
+  (ValidationGen . Compose $ \d -> if d > 0        then Right d else Left "Positives values only")
+
 -- And be able to call the generic validation function in this way:
 exError :: UserShape3 Maybe
 exError = validateRecord exUser3 exValidation3
+
+exErrorGen :: UserShape3 (Either Text)
+exErrorGen = validateRecordGen exUser3 exValidationGen
 
 -- There is still a bit of boilerplate, to be automatically generated:
 
