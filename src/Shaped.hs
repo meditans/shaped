@@ -18,52 +18,28 @@ class Shaped (a :: *) (b :: (* -> *) -> *) | a -> b, b -> a where
   toShape   :: a -> b Identity
   fromShape :: b Identity -> a
 
--- A functor for validation. Note, this could be simplified:
-newtype Validation a = Validation { unValidationF :: Compose ((->) a) Maybe a }
+newtype Validation f a = Validation { unValidation :: Compose ((->) a) f a }
                      deriving (GHC.Generic)
 
-instance Generic (Validation a)
-
-newtype ValidationGen f a = ValidationGen { unValidationGen :: Compose ((->) a) f a }
-                     deriving (GHC.Generic)
-
-instance Generic (ValidationGen f a)
+instance Generic (Validation f a)
 
 -- A general function to check records
 validateRecord
-  :: forall a s c c1 .
+  :: forall a f s c c1 .
      ( Shaped a s, c ~ Code a, c ~ '[c1], SListI2 c
-     , Code (s Identity)    ~ Map2 Identity c
-     , Code (s Maybe)       ~ Map2 Maybe c
-     , Code (s Validation)  ~ Map2 Validation c
-     , Generic (s Maybe)
+     , Code (s Identity)          ~ Map2 Identity c
+     , Code (s f)                 ~ Map2 f c
+     , Code (s (Validation f)) ~ Map2 (Validation f) c
+     , Generic (s f)
      , Generic (s Identity)
-     , Generic (s Validation))
-  => a -> s Validation -> s Maybe
+     , Generic (s (Validation f)))
+  => a -> s (Validation f) -> s f
 validateRecord u v = to . toSOPI
   $ hliftA2 (\(Validation (Compose f)) (Identity a) -> f a) vPOP uSOP
   where
     uSOP :: SOP Identity c
     uSOP =  fromSOPI . from $ toShape u
-    vPOP :: POP Validation c
-    vPOP = singleSOPtoPOP . fromSOPI $ from v
-
-validateRecordGen
-  :: forall a f s c c1 .
-     ( Shaped a s, c ~ Code a, c ~ '[c1], SListI2 c
-     , Code (s Identity)          ~ Map2 Identity c
-     , Code (s f)                 ~ Map2 f c
-     , Code (s (ValidationGen f)) ~ Map2 (ValidationGen f) c
-     , Generic (s f)
-     , Generic (s Identity)
-     , Generic (s (ValidationGen f)))
-  => a -> s (ValidationGen f) -> s f
-validateRecordGen u v = to . toSOPI
-  $ hliftA2 (\(ValidationGen (Compose f)) (Identity a) -> f a) vPOP uSOP
-  where
-    uSOP :: SOP Identity c
-    uSOP =  fromSOPI . from $ toShape u
-    vPOP :: POP (ValidationGen f) c
+    vPOP :: POP (Validation f) c
     vPOP = singleSOPtoPOP . fromSOPI $ from v
 
 --------------------------------------------------------------------------------
