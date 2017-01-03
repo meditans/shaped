@@ -8,6 +8,7 @@ import           Control.Monad.Identity
 import           Data.Functor.Compose
 import           Generics.SOP           hiding (Compose)
 import qualified GHC.Generics           as GHC
+import Data.Functor.Const
 
 -- The Shape type family is no longer used, in favour of simple (* -> *)
 -- parametrization The problem with type families was that I have to completely
@@ -41,6 +42,30 @@ validateRecord u v = to . toSOPI
     uSOP =  fromSOPI . from $ toShape u
     vPOP :: POP (Validation f) c
     vPOP = singleSOPtoPOP . fromSOPI $ from v
+
+transfGen
+  :: forall a s e as ass .
+  ( Shaped a s
+  , Code a ~ (as ': ass)
+  , Code (s (Const (Maybe e))) ~ Map2 (Const (Maybe e)) (Code a)
+  , Code (s (Either e))        ~ Map2 (Either e) (Code a)
+  , Generic a
+  , Generic (s (Either e))
+  , Generic (s (Const (Maybe e))))
+  => s (Either e) -> Either (s (Const (Maybe e))) a
+transfGen us =
+  let sequenced = hsequence struct
+  in case sequenced of
+       Right u -> Right (to u)
+       Left  _ -> Left  (to . toSOPI . hmap toMaybe $ struct)
+  where
+    struct :: SOP (Either e) (Code a)
+    struct = fromSOPI . from $ us
+
+toMaybe :: Either e t -> Const (Maybe e) t
+toMaybe x = case x of
+  Right a -> Const Nothing
+  Left  b -> Const (Just b)
 
 --------------------------------------------------------------------------------
 -- SOP machinery

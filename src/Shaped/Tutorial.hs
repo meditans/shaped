@@ -46,37 +46,7 @@ exError = validateRecord exUser exValidation
 exOk :: UserShape (Either Text)
 exOk = validateRecord validUser exValidation
 
-transf :: UserShape (Either Text) -> Either (UserShape (Const (Maybe Text))) User
-transf us =
-  let sequenced = hsequence struct
-  in case sequenced of
-       Right u -> Right (to u)
-       Left  _ -> Left  (to . toSOPI . hmap toMaybe $ struct)
-  where
-    struct :: SOP (Either Text) '[ '[ Text, Int, Double ] ]
-    struct = fromSOPI . from $ us
-
--- This has to be a natural transformation, per hmap type.
-toMaybe :: Either Text t -> Const (Maybe Text) t
-toMaybe x = case x of
-  Right a -> Const Nothing
-  Left  b -> Const (Just b)
-
--- Now we want to get back from a `UserShape (Either Text)` to a simpler `Either
--- (UserShape (Maybe Text)) User`, i.e. extracting the error to present the
--- eventual error in each field.
-
--- We have:
-
--- hsequence' :: (SListIN h xs, Applicative f) => h (f :.: g) xs -> f (h g xs)
-
--- like in:
-
--- hsequence' :: (SListI2 xss, Applicative f) => SOP (f :.: g) xss -> f (SOP g xss)
-
--- Or some of the restricted versions:
-
--- hsequence :: (SListIN h xs, SListIN (Prod h) xs, HSequence h) => Applicative f => h f xs -> f (h I xs)
+(tryThis, tryThat) = (transfGen exError, transfGen exOk)
 
 -- There is still a bit of boilerplate, to be automatically generated:
 
