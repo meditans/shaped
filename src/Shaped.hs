@@ -18,7 +18,7 @@ class Shaped (a :: *) (b :: (* -> *) -> *) | a -> b, b -> a where
   toShape   :: a -> b Identity
   fromShape :: b Identity -> a
 
-newtype Validation f a = Validation { unValidation :: Compose ((->) a) f a }
+newtype Validation f a = Validation { unValidation :: ((->) a :.: f) a }
                      deriving (GHC.Generic)
 
 instance Generic (Validation f a)
@@ -35,7 +35,7 @@ validateRecord
      , Generic (s (Validation f)))
   => a -> s (Validation f) -> s f
 validateRecord u v = to . toSOPI
-  $ hliftA2 (\(Validation (Compose f)) (Identity a) -> f a) vPOP uSOP
+  $ hliftA2 (\(Validation (Comp f)) (Identity a) -> f a) vPOP uSOP
   where
     uSOP :: SOP Identity c
     uSOP =  fromSOPI . from $ toShape u

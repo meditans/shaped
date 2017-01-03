@@ -27,9 +27,9 @@ exUser3 = User3 "Carlo" 26 (-0.345)
 
 exValidation :: UserShape3 (Validation (Either Text))
 exValidation = UserShape3
-  (Validation . Compose $ \t -> if t == "Carlo" then Right t else Left "Incorrect name")
-  (Validation . Compose $ \a -> if a < 100      then Right a else Left "No cyborgs here")
-  (Validation . Compose $ \d -> if d > 0        then Right d else Left "Positives values only")
+  (Validation . Comp $ \t -> if t == "Carlo" then Right t else Left "Incorrect name")
+  (Validation . Comp $ \a -> if a < 100      then Right a else Left "No cyborgs here")
+  (Validation . Comp $ \d -> if d > 0        then Right d else Left "Positives values only")
 
 -- And be able to call the generic validation function in this way:
 exError :: UserShape3 (Either Text)
