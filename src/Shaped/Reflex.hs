@@ -1,14 +1,7 @@
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE ExplicitForAll #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds, ExplicitForAll, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE RecursiveDo, ScopedTypeVariables, TypeApplications             #-}
+{-# LANGUAGE TypeFamilies, TypeOperators                                    #-}
 
-{-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 module Shaped.Reflex where
@@ -23,16 +16,33 @@ import Shaped
 import Data.Functor.Const
 import Data.Functor.Identity
 
-newtype FormletSimple t m a = FormletSimple (Event t () -> Dynamic t (Maybe Text) -> m (Dynamic t a))
+-- | A formlet is a way of constructing an input widget for only a part of the
+-- form (For example, only for the user password). The two parameters that are
+-- passed are a generic event to force the update of the field, and the error to
+-- be displayed (as the validation is done elsewhere).
+newtype Formlet t m a = Formlet
+  { unFormlet :: Event t () -> Dynamic t (Maybe Text) -> m (Dynamic t a) }
 
+-- | An endpoint is a reflex function to query an endpoint. It takes as
+-- arguments the input (in the same format the servant-reflex library takes it),
+-- and an event to trigger the api request. It returns an event with a nested
+-- either value: the first either is to track if the communication with the
+-- server has gone well, the second one to discriminate between an error value
+-- for the form or a validated input.
 type Endpoint t m a s = Dynamic t (Either Text a)
                      -> Event t ()
                      -> m (Event t (ReqResult (Either (s (Const (Maybe Text))) a)))
 
--- A more comprehensive alternative to a form
+-- | This is the function that should be called to construct a form for a
+-- record. It takes as input a Shaped formlet, a Shaped validation, and the
+-- endpoint to which it should address the request for the server. It returns a
+-- dynamic value representing the state of the form in general, but also an
+-- event tracking the server response after a request. Internally, the function
+-- creates the widgets for input, runs the client-side validations, controls the
+-- communication via the endpoint.
 form :: ( Shaped a s , Code a ~ c, SListI2 c, c ~ '[c1]
         , MonadWidget t m
-        , Code (s (FormletSimple t m))              ~ Map2 (FormletSimple t m) c
+        , Code (s (Formlet t m))              ~ Map2 (Formlet t m) c
         , Code (s (Const (Maybe Text)))             ~ Map2 (Const (Maybe Text)) c
         , Code (s (Either Text))                    ~ Map2 (Either Text) c
         , Code (s Identity)                         ~ Map2 Identity c
@@ -40,12 +50,12 @@ form :: ( Shaped a s , Code a ~ c, SListI2 c, c ~ '[c1]
         , Code (s (Event t :.: Const (Maybe Text))) ~ Map2 (Event t :.: Const (Maybe Text)) c
         , Generic a
         , Generic (s (Event t :.: Const (Maybe Text)))
-        , Generic (s (FormletSimple t m))
+        , Generic (s (Formlet t m))
         , Generic (s (Const (Maybe Text)))
         , Generic (s (Either Text))
         , Generic (s (Validation (Either Text)))
         , Generic (s Identity))
-     => s (FormletSimple t m)
+     => s (Formlet t m)
      -> s (Validation (Either Text))
      -> Endpoint t m a s
      -> m ( Dynamic t (Either (s (Const (Maybe Text))) a)
@@ -53,7 +63,7 @@ form :: ( Shaped a s , Code a ~ c, SListI2 c, c ~ '[c1]
 form shapedWidget clientVal endpoint = mdo
   postBuild <- getPostBuild
   -- Here I read a tentative user from the created interface
-  rawUser <- createInterface (splitShaped errorEvent) send shapedWidget
+  rawUser <- createInterface send (splitShaped errorEvent) shapedWidget
   -- Here I define the button. This could probably be mixed with the button code
   send <- _buttonElement send (() <$ serverResponse)
   -- This part does the server request and parses back the response without
@@ -75,28 +85,34 @@ form shapedWidget clientVal endpoint = mdo
   -- display validationResult
   return (validationResult, serverResponse)
 
--- This is a generic function, just a way of zipping and sequencing the two parts
+-- | This function is only concerned with the creation of the visual widget. The
+-- first argument forces the error, the second argument is the event response
+-- from the server with an error, the third is the formlet per se. The functions
+-- return a dynamic of a (non validated) record. This is a function meant to be
+-- used internally.
 createInterface :: forall t m a s c c1 .
   ( Shaped a s, Code a ~ c, SListI2 c, c ~ '[c1]
   , MonadWidget t m
-  , Code (s (FormletSimple t m))              ~ Map2 (FormletSimple t m) c
+  , Code (s (Formlet t m))              ~ Map2 (Formlet t m) c
   , Code (s (Event t :.: Const (Maybe Text))) ~ Map2 (Event t :.: Const (Maybe Text)) c
-  , Generic (s (FormletSimple t m))
+  , Generic (s (Formlet t m))
   , Generic (s (Event t :.: Const (Maybe Text)))
   , Generic a)
-  => s (Event t :.: Const (Maybe Text))
-  -> Event t ()
-  -> s (FormletSimple t m)
+  => Event t ()
+  -> s (Event t :.: Const (Maybe Text))
+  -> s (Formlet t m)
   -> m (Dynamic t a)
-createInterface shapedError e shapedFormlet = unComp . fmap to . hsequence $ hzipWith (subFun e) a b
+createInterface e shapedError shapedFormlet = unComp . fmap to . hsequence $ hzipWith (subFun e) a b
   where
     a :: POP (Event t :.: Const (Maybe Text)) c
     a = singleSOPtoPOP . fromSOPI $ from shapedError
-    b :: SOP (FormletSimple t m) c
+    b :: SOP (Formlet t m) c
     b = fromSOPI $ from shapedFormlet
 
-subFun :: MonadWidget t m => Event t () -> (Event t :.: Const (Maybe Text)) a -> FormletSimple t m a -> (m :.: Dynamic t) a
-subFun e (Comp a) (FormletSimple f) = Comp $ do
+-- | This function passes the actual arguments to the formlet. It's meant to be
+-- used internally in createInterface
+subFun :: MonadWidget t m => Event t () -> (Event t :.: Const (Maybe Text)) a -> Formlet t m a -> (m :.: Dynamic t) a
+subFun e (Comp a) (Formlet f) = Comp $ do
   let eventWithoutConst = getConst <$> a
   dynamicError <- holdDyn Nothing eventWithoutConst
   f e dynamicError
@@ -108,8 +124,8 @@ instance (Applicative f, Applicative g) => Applicative (f :.: g) where
     Comp f <*> Comp x = Comp ((<*>) <$> f <*> x)
 
 --------------------------------------------------------------------------------
--- Parse the response from the API. This function could be in servant-reflex
--- (not in reflex-dom). In the meantime we'll keep it in shaped.
+-- | Parse the response from the API, to not expose the users to the types in
+-- servant-reflex
 parseReqResult :: ReqResult a -> Either Text a
 parseReqResult (ResponseSuccess a _) = Right a
 parseReqResult (ResponseFailure t _) = Left t
@@ -118,6 +134,7 @@ parseReqResult (RequestFailure s)    = Left s
 ---------------------------------------------------------------------------------
 
 -- I begin understanding this as belonging to a simple sum, not SOP or POP
+-- | Create a blank error for a generic data type.
 nullError :: forall a s c c1.
   ( Shaped a s, Code a ~ c, c ~ '[c1], SListI2 c
   , Code (s (Const (Maybe Text))) ~ Map2 (Const (Maybe Text)) c
