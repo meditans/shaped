@@ -65,3 +65,32 @@ instance (Show1 f) => Show (UserShape f) where
     . showChar ' ' . showsPrec1 11 y
     . showChar ' ' . showsPrec1 11 z
 
+-----------------------------------
+-- An example for the type synonyms
+
+data BigRecord a b c = BigRecord a b c
+type SmallRecord a = BigRecord () a Int
+
+type SmallRecordShaped a f = BigRecordShaped () () Int f
+
+-- so the advice is just to create an additional type sinonym
+
+ex :: SmallRecordShaped Char Maybe
+ex = BigRecordShaped Nothing (Just ()) (Just 3)
+
+-- To be generated
+
+data BigRecordShaped a b c f = BigRecordShaped (f a) (f b) (f c)
+  deriving (GHC.Generic)
+instance Generic (BigRecordShaped a b c f)
+
+instance Shaped (BigRecord a b c) (BigRecordShaped a b c) where
+  toShape   (BigRecord a b c) = BigRecordShaped (Identity a) (Identity b) (Identity c)
+  fromShape (BigRecordShaped (Identity a) (Identity b) (Identity c)) = BigRecord a b c
+
+instance (Show1 f, Show a, Show b, Show c) => Show (BigRecordShaped a b c f) where
+  showsPrec d (BigRecordShaped x y z) = showParen (d > 10) $
+      showString "UserShape"
+    . showChar ' ' . showsPrec1 11 x
+    . showChar ' ' . showsPrec1 11 y
+    . showChar ' ' . showsPrec1 11 z
