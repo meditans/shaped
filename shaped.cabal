@@ -21,6 +21,9 @@ library
                      , text
                      , generics-sop
                      , mtl
+                     , servant-reflex
+                     , reflex
+                     , reflex-dom
   default-language:    Haskell2010
 
 test-suite shaped-test
