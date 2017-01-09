@@ -11,6 +11,8 @@ import Reflex.Dom
 import Servant.Reflex
 import Data.Text
 import Generics.SOP
+import qualified Data.Map as Map
+import Data.Monoid
 
 import Shaped
 import Data.Functor.Const
@@ -34,12 +36,12 @@ type Endpoint t m a s = Dynamic t (Either Text a)
                      -> m (Event t (ReqResult (Either (s (Const (Maybe Text))) a)))
 
 -- | This is the function that should be called to construct a form for a
--- record. It takes as input a Shaped formlet, a Shaped validation, and the
--- endpoint to which it should address the request for the server. It returns a
--- dynamic value representing the state of the form in general, but also an
--- event tracking the server response after a request. Internally, the function
--- creates the widgets for input, runs the client-side validations, controls the
--- communication via the endpoint.
+-- record. It takes as input a Shaped formlet, a Shaped validation, title and
+-- attributes for the button, and the endpoint to which it should address the
+-- request for the server. It returns a dynamic value representing the state of
+-- the form in general, but also an event tracking the server response after a
+-- request. Internally, the function creates the widgets for input, runs the
+-- client-side validations, controls the communication via the endpoint.
 form :: ( Shaped a s , Code a ~ c, SListI2 c, c ~ '[c1]
         , MonadWidget t m
         , Code (s (Formlet t m))              ~ Map2 (Formlet t m) c
@@ -57,15 +59,16 @@ form :: ( Shaped a s , Code a ~ c, SListI2 c, c ~ '[c1]
         , Generic (s Identity))
      => s (Formlet t m)
      -> s (Validation (Either Text))
+     -> Text -> Map.Map AttributeName Text
      -> Endpoint t m a s
      -> m ( Dynamic t (Either (s (Const (Maybe Text))) a)
           , Event t (Either Text (Either (s (Const (Maybe Text))) a)) )
-form shapedWidget clientVal endpoint = mdo
+form shapedWidget clientVal buttonTitle btnConfig endpoint = mdo
   postBuild <- getPostBuild
   -- Here I read a tentative user from the created interface
   rawUser <- createInterface send (splitShaped errorEvent) shapedWidget
   -- Here I define the button. This could probably be mixed with the button code
-  send <- _buttonElement send (() <$ serverResponse)
+  send <- (formButton buttonTitle btnConfig) send (() <$ serverResponse)
   -- This part does the server request and parses back the response without
   -- depending on the types in servant-reflex
   serverResponse <- let query = either (const $ Left "Please fill correctly the fields above") Right <$> validationResult
@@ -116,6 +119,21 @@ subFun e (Comp a) (Formlet f) = Comp $ do
   let eventWithoutConst = getConst <$> a
   dynamicError <- holdDyn Nothing eventWithoutConst
   f e dynamicError
+
+-- | This function builds a button, which is disabled during the server requests
+-- (so that the user can't repeatedly submit before the server sent the previous
+-- response).
+formButton :: DomBuilder t m => Text -> Map.Map AttributeName Text -> Event t () -> Event t () -> m (Event t ())
+formButton buttonTitle initialAttr disable enable = divClass "form-group" $ do
+  (e, _) <- element "button" conf (text buttonTitle)
+  return (domEvent Click e)
+  where
+    conf = def & elementConfig_initialAttributes .~ initialAttr
+               & elementConfig_modifyAttributes  .~ mergeWith (\_ b -> b)
+                   [ const disableAttr <$> disable
+                   , const enableAttr <$> enable ]
+    disableAttr = fmap Just initialAttr  <> "disabled" =: Just "true"
+    enableAttr  = fmap Just initialAttr  <> "disabled" =: Nothing
 
 -- Either move this temporary in shaped with the intent of reporting that
 -- upstream, or define a synonym. Discuss this on the generics-sop tracker!

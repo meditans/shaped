@@ -24,6 +24,7 @@ library
                      , servant-reflex
                      , reflex
                      , reflex-dom
+                     , containers
   default-language:    Haskell2010
 
 test-suite shaped-test
