@@ -17,6 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Shaped
                      , Shaped.Tutorial
+                     , Shaped.Reflex
   build-depends:       base >= 4.7 && < 5
                      , text
                      , generics-sop
