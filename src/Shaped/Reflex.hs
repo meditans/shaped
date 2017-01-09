@@ -29,31 +29,22 @@ type Endpoint t m a s = Dynamic t (Either Text a)
                      -> Event t ()
                      -> m (Event t (ReqResult (Either (s (Const (Maybe Text))) a)))
 
--- What should I do with two validations here? Maybe not
--- class (Shaped a s, MonadWidget t m) => EndpointC t m s a where
---   endpoint :: Dynamic t (Either Text a)
---            -> Event t ()
---            -> m (Event t (ReqResult (Either (s (Const (Maybe Text))) a)))
-
 -- A more comprehensive alternative to a form
-form :: (Shaped a s, MonadWidget t m
-        , Code (s (FormletSimple t m)) ~ Map2 (FormletSimple t m) c
-        , Code a ~ c, SListI c, MonadWidget t m
-        , Generic (s (FormletSimple t m))
-        , All SListI c
-        , c ~ '[c1]
-        , Code (s (FormletSimple t m)) ~ Map2 (FormletSimple t m) c
-        , Code (s (Const (Maybe Text))) ~ Map2 (Const (Maybe Text)) c
-        , Code (s (Either Text)) ~ Map2 (Either Text) c
-        , Code (s Identity) ~ Map2 Identity c
-        , Code (s (Validation (Either Text))) ~ Map2 (Validation (Either Text)) c
+form :: ( Shaped a s , Code a ~ c, SListI2 c, c ~ '[c1]
+        , MonadWidget t m
+        , Code (s (FormletSimple t m))              ~ Map2 (FormletSimple t m) c
+        , Code (s (Const (Maybe Text)))             ~ Map2 (Const (Maybe Text)) c
+        , Code (s (Either Text))                    ~ Map2 (Either Text) c
+        , Code (s Identity)                         ~ Map2 Identity c
+        , Code (s (Validation (Either Text)))       ~ Map2 (Validation (Either Text)) c
         , Code (s (Event t :.: Const (Maybe Text))) ~ Map2 (Event t :.: Const (Maybe Text)) c
+        , Generic a
         , Generic (s (Event t :.: Const (Maybe Text)))
+        , Generic (s (FormletSimple t m))
         , Generic (s (Const (Maybe Text)))
         , Generic (s (Either Text))
         , Generic (s (Validation (Either Text)))
-        , Generic (s Identity)
-        , Generic a)
+        , Generic (s Identity))
      => s (FormletSimple t m)
      -> s (Validation (Either Text))
      -> Endpoint t m a s
@@ -86,12 +77,11 @@ form shapedWidget clientVal endpoint = mdo
 
 -- This is a generic function, just a way of zipping and sequencing the two parts
 createInterface :: forall t m a s c c1 .
-  ( Shaped a s, Code a ~ c, SListI c, MonadWidget t m
-  , Generic (s (FormletSimple t m))
-  , All SListI c
-  , c ~ '[c1]
-  , Code (s (FormletSimple t m)) ~ Map2 (FormletSimple t m) c
+  ( Shaped a s, Code a ~ c, SListI2 c, c ~ '[c1]
+  , MonadWidget t m
+  , Code (s (FormletSimple t m))              ~ Map2 (FormletSimple t m) c
   , Code (s (Event t :.: Const (Maybe Text))) ~ Map2 (Event t :.: Const (Maybe Text)) c
+  , Generic (s (FormletSimple t m))
   , Generic (s (Event t :.: Const (Maybe Text)))
   , Generic a)
   => s (Event t :.: Const (Maybe Text))
@@ -129,13 +119,12 @@ parseReqResult (RequestFailure s)    = Left s
 
 -- I begin understanding this as belonging to a simple sum, not SOP or POP
 nullError :: forall a s c c1.
-  ( Shaped a s
-  , Code a ~ c
-  , c ~ '[c1]
+  ( Shaped a s, Code a ~ c, c ~ '[c1], SListI2 c
   , Code (s (Const (Maybe Text))) ~ Map2 (Const (Maybe Text)) c
-  , Generic (s (Const (Maybe Text)))
-  , All SListI c
-  ) => s (Const (Maybe Text))
+  , Generic (s (Const (Maybe Text))))
+  => s (Const (Maybe Text))
 nullError = to . toSOPI
-          . (singlePOPtoSOP :: POP (Const (Maybe Text)) c -> SOP (Const (Maybe Text)) c)
-          $ (hpure (Const Nothing) :: POP (Const (Maybe Text)) c)
+          -- . id @(SOP (Const (Maybe Text)) c)
+          . singlePOPtoSOP
+          . id @(POP (Const (Maybe Text)) c)
+          $ hpure (Const Nothing)
