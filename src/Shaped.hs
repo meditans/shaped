@@ -67,6 +67,29 @@ toMaybe x = case x of
   Right a -> Const Nothing
   Left  b -> Const (Just b)
 
+splitShaped :: forall a s c c1 f g .
+  ( Functor f, Shaped a s, Code a ~ c, c ~ '[c1], SListI c1
+  , Generic (s g)
+  , Code (s g) ~ Map2 g c
+  , Code (s (f :.: g)) ~ Map2 (f :.: g) c
+  , Generic (s (f :.: g))
+  )
+  => f (s g) -> s (f :.: g)
+splitShaped ev = to . toSOPI . nPtoSingleSOP $ hliftA2 funz duplicato prs
+  where
+    prs :: NP (Projection g c1) c1
+    prs = projections
+    duplicato :: NP (K (f (s g))) c1
+    duplicato = hpure (K ev)
+    funz :: forall a. K (f (s g)) a -> (K (NP g c1) -.-> g) a -> (f :.: g) a
+    funz (K dup) (Fn p) = Comp . flip fmap dup $
+      p . K
+      . singleSOPtoNP
+      -- . (id @(SOP g c))
+      . fromSOPI
+      -- . (id @(SOP I (Map2 g c)))
+      . from
+
 --------------------------------------------------------------------------------
 -- SOP machinery
 --------------------------------------------------------------------------------

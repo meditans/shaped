@@ -117,24 +117,6 @@ instance (Applicative f, Applicative g) => Applicative (f :.: g) where
     pure x = Comp (pure (pure x))
     Comp f <*> Comp x = Comp ((<*>) <$> f <*> x)
 
-splitShaped :: forall a s c c1 f g .
-  ( Functor f, Shaped a s, Code a ~ c, c ~ '[c1], SListI c1
-  , Generic (s g)
-  , Code (s g) ~ Map2 g c
-  , Code (s (f :.: g)) ~ Map2 (f :.: g) c
-  , Generic (s (f :.: g))
-  )
-  => f (s g) -> s (f :.: g)
-splitShaped ev = to . toSOPI . nPtoSingleSOP $ hliftA2 funz duplicato prs
-  where
-    prs :: NP (Projection g c1) c1
-    prs = projections
-    duplicato :: NP (K (f (s g))) c1
-    duplicato = hpure (K ev)
-    funz :: forall a. K (f (s g)) a -> (K (NP g c1) -.-> g) a -> (f :.: g) a
-    funz (K dup) (Fn p) = Comp $ ((p . K) . singleSOPtoNP . (id @(SOP g c)) . fromSOPI . (id @(SOP I (Map2 g c))) . from) <$> dup
-
-
 --------------------------------------------------------------------------------
 -- Parse the response from the API. This function could be in servant-reflex
 -- (not in reflex-dom). In the meantime we'll keep it in shaped.
@@ -157,5 +139,3 @@ nullError :: forall a s c c1.
 nullError = to . toSOPI
           . (singlePOPtoSOP :: POP (Const (Maybe Text)) c -> SOP (Const (Maybe Text)) c)
           $ (hpure (Const Nothing) :: POP (Const (Maybe Text)) c)
-
-
