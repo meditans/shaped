@@ -143,8 +143,19 @@ toNPI (fx :* np) = I fx :* toNPI np
 
 ---------------------------------------------------- From SOP to POP for records
 
+-- I believe this happens because they are essentially NPs
+
 singleSOPtoPOP :: SOP f (xs ': '[]) -> POP f (xs ': '[])
 singleSOPtoPOP (SOP (Z x)) = POP (x :* Nil)
+
+singleSOPtoNP :: SOP f (xs ': '[]) -> NP f xs
+singleSOPtoNP (SOP (Z x)) = x
+
+nPtoSingleSOP :: NP f xs -> SOP f (xs ': '[])
+nPtoSingleSOP x = (SOP (Z x))
+
+singlePOPtoSOP :: POP f (xs ': '[]) -> SOP f (xs ': '[])
+singlePOPtoSOP (POP (x :* Nil)) = SOP (Z x)
 
 ------------------------------------------------------- Validation for sum types
 
